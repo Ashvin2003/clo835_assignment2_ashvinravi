@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-pod
+  labels:
+    app: employees
+spec:
+  containers:
+  - name: web
+    image: 734217158330.dkr.ecr.us-east-1.amazonaws.com/webapp:latest
+    ports:
+    - containerPort: 5000
