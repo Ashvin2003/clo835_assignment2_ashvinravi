@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mysql-pod
+  labels:
+    app: mysql
+spec:
+  containers:
+  - name: mysql
+    image: 734217158330.dkr.ecr.us-east-1.amazonaws.com/mysql:latest
+    env:
+    - name: MYSQL_ROOT_PASSWORD
+      value: rootpass
+    ports:
+    - containerPort: 3306
