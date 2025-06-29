@@ -1,0 +1,99 @@
+name: Build, Push to ECR, Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy via EC2
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials with Session Token
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build and Push Web App Image
+      run: |
+        docker build -t web-app:latest -f Dockerfile .
+        docker tag web-app:latest ${{ secrets.ECR_WEB_REPO }}:latest
+        docker push ${{ secrets.ECR_WEB_REPO }}:latest
+
+    - name: Build and Push MySQL Image
+      run: |
+        docker build -t mysql-db:latest -f Dockerfile_mysql .
+        docker tag mysql-db:latest ${{ secrets.ECR_MYSQL_REPO }}:latest
+        docker push ${{ secrets.ECR_MYSQL_REPO }}:latest
+
+    - name: Setup SSH Access
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.EC2_PUBLIC_IP }} >> ~/.ssh/known_hosts
+
+    - name: SSH into EC2 and Deploy
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_PUBLIC_IP }} << 'EOF'
+
+        # Install Docker, kind, and kubectl
+        sudo yum update -y
+        sudo yum install -y docker git
+        sudo service docker start
+        sudo usermod -aG docker ec2-user
+
+        curl -o kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.29.0/2024-05-09/bin/linux/amd64/kubectl
+        chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+
+        curl -Lo kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+        chmod +x kind && sudo mv kind /usr/local/bin/kind
+
+        # Create kind cluster
+        kind create cluster --name clo835-cluster
+
+        # Authenticate with ECR
+        aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws configure set aws_session_token ${{ secrets.AWS_SESSION_TOKEN }}
+        aws configure set region ${{ secrets.AWS_REGION }}
+
+        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
+          | docker login --username AWS --password-stdin $(echo "${{ secrets.ECR_WEB_REPO }}" | cut -d'/' -f1)
+
+        # Pull latest images
+        docker pull ${{ secrets.ECR_WEB_REPO }}:latest
+        docker pull ${{ secrets.ECR_MYSQL_REPO }}:latest
+
+        # Clone or update repo
+        if [ ! -d "clo835_assignment2_ashvinravi" ]; then
+          git clone https://github.com/Ashvin2003/clo835_assignment2_ashvinravi.git
+        else
+          cd clo835_assignment2_ashvinravi && git pull && cd ..
+        fi
+
+        cd clo835_assignment2_ashvinravi
+
+        # Replace image URIs in manifests
+        sed -i "s|<your_ecr_web_image>|${{ secrets.ECR_WEB_REPO }}:latest|g" manifests/*.yaml
+        sed -i "s|<your_ecr_mysql_image>|${{ secrets.ECR_MYSQL_REPO }}:latest|g" manifests/*.yaml
+
+        # Apply Kubernetes manifests
+        kubectl apply -f manifests/
+
+        kubectl get pods -o wide
+        kubectl get svc
+
+        EOF
