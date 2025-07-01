@@ -11,5 +11,14 @@ spec:
   - name: web
     image: 734217158330.dkr.ecr.us-east-1.amazonaws.com/webapp:latest
     imagePullPolicy: IfNotPresent
+    env:
+    - name: DBHOST
+      value: mysql-service
+    - name: DBPORT
+      value: "3306"
+    - name: DBUSER
+      value: root
+    - name: DBPWD
+      value: rootpass
     ports:
-    - containerPort: 5000
+    - containerPort: 8080
