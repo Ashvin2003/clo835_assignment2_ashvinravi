@@ -12,8 +12,19 @@ spec:
       labels:
         app: employees
     spec:
+      imagePullSecrets:
+      - name: ecr-registry-secret
       containers:
       - name: web
         image: 734217158330.dkr.ecr.us-east-1.amazonaws.com/webapp:latest
         ports:
-        - containerPort: 5000
+        - containerPort: 8080
+        env:
+        - name: DBHOST
+          value: mysql-service
+        - name: DBUSER
+          value: root
+        - name: DBPWD
+          value: rootpass
+        - name: DBPORT
+          value: "3306"
