@@ -8,5 +8,6 @@ spec:
   containers:
   - name: web
     image: 734217158330.dkr.ecr.us-east-1.amazonaws.com/webapp:latest
+    imagePullPolicy: IfNotPresent
     ports:
     - containerPort: 5000
